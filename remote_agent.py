@@ -102,7 +102,7 @@ def start_server(host='0.0.0.0', port=9999):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
         s.listen(1)
-         print("=" * 55)
+        print("=" * 55)
         print("[+] Remote Agent is now running")
         print(f"[+] Listening for connections on {host}:{port}")
         print("=" * 55)
