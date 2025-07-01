@@ -1,23 +1,27 @@
-import os
 import platform
 import socket
 import subprocess
 import json
 import psutil
+import os
 
 def is_suspicious(item):
-    keywords = ['temp', 'appdata', 'roaming', 'startup', 'system32',
-                'keylog', 'backdoor', 'rat', 'meterpreter', 'malware',
-                'shell', 'cmd.exe', 'powershell.exe', '.vbs', '.bat', '.exe', 'autorun']
+    keywords = [
+        'temp', 'appdata', 'roaming', 'startup', 'system32',
+        'keylog', 'backdoor', 'rat', 'meterpreter', 'malware',
+        'shell', 'cmd.exe', 'powershell.exe', '.vbs', '.bat', '.exe', 'autorun'
+    ]
     return any(k in item.lower() for k in keywords)
 
-def scan_processes():
+def scan_processes(max_items=20):
     sus = []
     for proc in psutil.process_iter(['pid', 'name']):
         try:
             name = proc.info['name']
             if name and is_suspicious(name):
                 sus.append({'pid': proc.info['pid'], 'name': name})
+            if len(sus) >= max_items:
+                break
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return sus
@@ -32,7 +36,7 @@ def scan_persistence():
                 r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
                 r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
             ]
-            for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+            for hive, hive_name in [(winreg.HKEY_LOCAL_MACHINE, "HKLM"), (winreg.HKEY_CURRENT_USER, "HKCU")]:
                 for path in run_keys:
                     try:
                         key = winreg.OpenKey(hive, path)
@@ -41,7 +45,12 @@ def scan_persistence():
                             try:
                                 name, value, _ = winreg.EnumValue(key, i)
                                 if is_suspicious(value):
-                                    sus_entries.append({'name': name, 'command': value})
+                                    entry = {
+                                        'location': f"{hive_name}\\{path}",
+                                        'name': name,
+                                        'value': value
+                                    }
+                                    sus_entries.append(entry)
                                 i += 1
                             except OSError:
                                 break
@@ -77,8 +86,8 @@ def scan_network():
     for c in conns:
         if c.status == 'ESTABLISHED' and c.raddr:
             result.append({
-                'laddr': f"{c.laddr.ip}:{c.laddr.port}",
-                'raddr': f"{c.raddr.ip}:{c.raddr.port}",
+                'laddr': f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else "unknown",
+                'raddr': f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else "unknown",
                 'pid': c.pid
             })
     return result
@@ -114,4 +123,5 @@ def start_server(host='0.0.0.0', port=9999):
                 result = handle_command(cmd)
                 conn.sendall(json.dumps(result).encode())
 
-start_server()
+if __name__ == "__main__":
+    start_server()
